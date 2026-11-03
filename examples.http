@@ -1,0 +1,82 @@
+@baseUrl = http://localhost:3000
+@tenant = sol-nascente
+@lead = lead-demo-001
+
+### Saúde
+GET {{baseUrl}}/health
+
+### Primeira mensagem: identificador fictício, sem número de WhatsApp
+# Aguarde a janela de 8 segundos mais o processamento antes de consultar a resposta.
+POST {{baseUrl}}/webhook/mensagem
+Content-Type: application/json
+
+{
+  "message_id": "demo-001",
+  "tenant_id": "{{tenant}}",
+  "telefone": "{{lead}}",
+  "texto": "Sou João Pereira de Caruaru. Casa própria. Conta de luz de 480 por mês. Quero financiar.",
+  "timestamp": "2026-11-01T10:00:00-03:00",
+  "autor": "lead",
+  "simulacao": true
+}
+
+### Repetindo exatamente a chamada anterior para observar o duplicate: true
+# Trocar o texto mantendo message_id devolve conflito e não modifica a conversa.
+
+### Histórico, ficha e ações
+GET {{baseUrl}}/conversas/{{tenant}}/{{lead}}
+
+### Assumir atendimento (suspende automação, inclusive um turno em andamento)
+POST {{baseUrl}}/intervencao
+Content-Type: application/json
+
+{"tenant_id":"{{tenant}}","telefone":"{{lead}}","acao":"assumir"}
+
+### Mensagem de atendente: entra no histórico e não dispara resposta automática
+POST {{baseUrl}}/webhook/mensagem
+Content-Type: application/json
+
+{
+  "message_id": "demo-humano-001",
+  "tenant_id": "{{tenant}}",
+  "telefone": "{{lead}}",
+  "texto": "Conversei com o lead e esclareci como funciona a visita técnica.",
+  "timestamp": "2026-11-01T10:01:00-03:00",
+  "autor": "humano",
+  "simulacao": true
+}
+
+### Religar: a automação volta com acesso ao histórico atualizado
+POST {{baseUrl}}/intervencao
+Content-Type: application/json
+
+{"tenant_id":"{{tenant}}","telefone":"{{lead}}","acao":"religar"}
+
+### Próximo turno; selecione um horário que consultar_agenda tenha oferecido
+POST {{baseUrl}}/webhook/mensagem
+Content-Type: application/json
+
+{
+  "message_id": "demo-002",
+  "tenant_id": "{{tenant}}",
+  "telefone": "{{lead}}",
+  "texto": "Quais horários vocês têm para a visita?",
+  "timestamp": "2026-11-01T10:02:00-03:00",
+  "simulacao": true
+}
+
+### Métricas do tenant
+GET {{baseUrl}}/metricas/{{tenant}}
+
+### Tenant independente, mesma identificação fictícia
+POST {{baseUrl}}/webhook/mensagem
+Content-Type: application/json
+
+{
+  "message_id": "demo-001",
+  "tenant_id": "aurora-solar",
+  "telefone": "{{lead}}",
+  "texto": "Olá, gostaria de conhecer energia solar.",
+  "timestamp": "2026-11-01T10:03:00-03:00",
+  "simulacao": true
+}

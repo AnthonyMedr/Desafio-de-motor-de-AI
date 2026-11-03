@@ -1,0 +1,444 @@
+{
+  "info": {
+    "name": "Motor de atendimento com IA",
+    "description": "Exemplos da API do desafio. Configure as variáveis da coleção e use Send manualmente. Fluxo: 01, 02, aguardar processamento, 04. Para continuar, edite texto em 02 e envie novamente. Use um novo lead para iniciar outra conversa. O Collection Runner não aguarda automaticamente a resposta assíncrona. Mensagens em simulação; telefone é apenas uma identificação fictícia. A chave Gemini pertence ao .env do servidor e não é necessária no Postman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "tenant",
+      "value": "sol-nascente",
+      "type": "string"
+    },
+    {
+      "key": "outroTenant",
+      "value": "aurora-solar",
+      "type": "string"
+    },
+    {
+      "key": "lead",
+      "value": "lead-postman-001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Saúde da API",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health",
+        "description": "Confirma que a API está acessível e mostra o provedor configurado."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Enviar mensagem ao assistente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/webhook/mensagem",
+        "description": "Edite texto no Body e envie. Cada envio gera um ID e timestamp novos. Aguarde a janela de 8 segundos mais o processamento do modelo e consulte a conversa. O 202 confirma o recebimento; a resposta da IA fica no histórico.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message_id\": \"{{messageId}}\",\n  \"tenant_id\": \"{{tenant}}\",\n  \"telefone\": \"{{lead}}\",\n  \"texto\": \"Sou João Pereira de Caruaru. Casa própria. Conta de luz de 480 por mês. Quero financiar.\",\n  \"timestamp\": \"{{timestamp}}\",\n  \"autor\": \"lead\",\n  \"simulacao\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(202); });"
+            ]
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.variables.set('messageId', pm.variables.replaceIn('{{$guid}}'));",
+              "pm.variables.set('timestamp', new Date().toISOString());",
+              "pm.collectionVariables.set('ultimaMensagem', pm.variables.replaceIn(pm.request.body.raw));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Mensagem aceita', function () { pm.expect(pm.response.json().accepted).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Repetir a última mensagem (idempotência)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/webhook/mensagem",
+        "description": "Execute depois de 02. Reenvia exatamente o mesmo corpo, incluindo ID e timestamp. Esperado: duplicate=true. Para conversar de novo, use 02 com outro texto.",
+        "body": {
+          "mode": "raw",
+          "raw": "{{ultimaMensagem}}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(202); });"
+            ]
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.collectionVariables.get('ultimaMensagem')) { throw new Error('Envie primeiro a mensagem da requisição 02.'); }"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Duplicata reconhecida', function () { pm.expect(pm.response.json().duplicate).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Consultar conversa e resposta da IA",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/conversas/{{tenant}}/{{lead}}",
+        "description": "Mostra mensagens, ficha, tags, ações e auditoria. Procure mensagens com author=ia. Antes da primeira mensagem, retorna 404; enquanto processa, consulte novamente depois de alguns segundos."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Assumir atendimento humano",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/intervencao",
+        "description": "Suspende a automação da conversa existente.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tenant_id\": \"{{tenant}}\",\n  \"telefone\": \"{{lead}}\",\n  \"acao\": \"assumir\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Registrar mensagem do atendente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/webhook/mensagem",
+        "description": "Use após assumir. Registra a mensagem humana no histórico.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message_id\": \"{{messageId}}\",\n  \"tenant_id\": \"{{tenant}}\",\n  \"telefone\": \"{{lead}}\",\n  \"texto\": \"Conversei com o lead e esclareci como funciona a visita técnica.\",\n  \"timestamp\": \"{{timestamp}}\",\n  \"autor\": \"humano\",\n  \"simulacao\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(202); });"
+            ]
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.variables.set('messageId', pm.variables.replaceIn('{{$guid}}'));",
+              "pm.variables.set('timestamp', new Date().toISOString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Mensagem aceita', function () { pm.expect(pm.response.json().accepted).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Religar automação",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/intervencao",
+        "description": "Retoma a automação com acesso ao histórico atualizado.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tenant_id\": \"{{tenant}}\",\n  \"telefone\": \"{{lead}}\",\n  \"acao\": \"religar\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Continuar conversa sobre a visita",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/webhook/mensagem",
+        "description": "Pede os horários. Consulte a conversa e escolha apenas um horário oferecido para enviar na requisição 02.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message_id\": \"{{messageId}}\",\n  \"tenant_id\": \"{{tenant}}\",\n  \"telefone\": \"{{lead}}\",\n  \"texto\": \"Quais horários vocês têm para a visita?\",\n  \"timestamp\": \"{{timestamp}}\",\n  \"autor\": \"lead\",\n  \"simulacao\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(202); });"
+            ]
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.variables.set('messageId', pm.variables.replaceIn('{{$guid}}'));",
+              "pm.variables.set('timestamp', new Date().toISOString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Mensagem aceita', function () { pm.expect(pm.response.json().accepted).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Métricas do tenant",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/metricas/{{tenant}}",
+        "description": "Mostra conversas, qualificação, consumo e estimativas de custo."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 - Mensagem em outro tenant",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/webhook/mensagem",
+        "description": "Usa a mesma identificação fictícia em outra empresa, com histórico independente.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message_id\": \"{{messageId}}\",\n  \"tenant_id\": \"{{outroTenant}}\",\n  \"telefone\": \"{{lead}}\",\n  \"texto\": \"Olá, gostaria de conhecer energia solar.\",\n  \"timestamp\": \"{{timestamp}}\",\n  \"autor\": \"lead\",\n  \"simulacao\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(202); });"
+            ]
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.variables.set('messageId', pm.variables.replaceIn('{{$guid}}'));",
+              "pm.variables.set('timestamp', new Date().toISOString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Mensagem aceita', function () { pm.expect(pm.response.json().accepted).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 - Consultar conversa do outro tenant",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/conversas/{{outroTenant}}/{{lead}}",
+        "description": "Consulta o histórico independente do outro tenant."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status HTTP esperado', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

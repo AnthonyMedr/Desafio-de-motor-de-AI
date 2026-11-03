@@ -1,0 +1,29 @@
+services:
+  api:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      DATABASE_PATH: /app/data/atendimento.sqlite
+      TENANTS_DIR: /app/tenants
+      BURST_WINDOW_MS: "${BURST_WINDOW_MS:-8000}"
+      WORKER_INTERVAL_MS: "${WORKER_INTERVAL_MS:-250}"
+      LLM_PROVIDER: "${LLM_PROVIDER:-mock}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-3.5-flash-lite}"
+      LLM_TIMEOUT_MS: "${LLM_TIMEOUT_MS:-30000}"
+      LLM_TURN_TIMEOUT_MS: "${LLM_TURN_TIMEOUT_MS:-120000}"
+      LLM_MAX_ROUNDS: "${LLM_MAX_ROUNDS:-8}"
+      LLM_MAX_RETRIES: "${LLM_MAX_RETRIES:-1}"
+      MAX_JOB_ATTEMPTS: "${MAX_JOB_ATTEMPTS:-3}"
+      INPUT_USD_PER_MILLION: "${INPUT_USD_PER_MILLION:-0.30}"
+      OUTPUT_USD_PER_MILLION: "${OUTPUT_USD_PER_MILLION:-2.50}"
+    volumes:
+      - atendimento-data:/app/data
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  atendimento-data:

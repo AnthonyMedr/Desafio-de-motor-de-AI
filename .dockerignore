@@ -1,0 +1,17 @@
+node_modules
+dist
+data
+reports
+coverage
+.git
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.pdf
+docs
+examples.http
+README.md
